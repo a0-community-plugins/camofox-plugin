@@ -128,6 +128,12 @@ class CamofoxSetup(ApiHandler):
             env["CAMOFOX_API_KEY"] = api_key
         if admin_key:
             env["CAMOFOX_ADMIN_KEY"] = admin_key
+        # Software rendering — required for correct rendering in Xvfb virtual displays
+        env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+        env["GALLIUM_DRIVER"] = "llvmpipe"
+        env["MOZ_DISABLE_OOP_COMPOSITING"] = "1"
+        env["MOZ_WEBRENDER"] = "0"
+        env["MOZ_DISABLE_RDD_SANDBOX"] = "1"
 
         # Find server.js from installed npm package
         server_js = self._find_server_js()

@@ -1,5 +1,6 @@
 """API handler: CamoFox server health check, start, and stop."""
 
+import asyncio
 import os
 import shutil
 
@@ -151,6 +152,7 @@ class CamofoxHealth(ApiHandler):
 
     async def _server_control(self, action: str) -> dict:
         cfg = get_config()
+        # Try CamofoxCli first; fall back to direct subprocess control
         try:
             cli = CamofoxCli(
                 binary_path=cfg.get("binary_path") or None,
@@ -158,7 +160,76 @@ class CamofoxHealth(ApiHandler):
             )
             result = await cli.execute("server", action)
             return {"ok": True, "action": action, "result": result}
-        except CamofoxCliNotFoundError as e:
-            return {"ok": False, "error": str(e)}
-        except CamofoxCliError as e:
-            return {"ok": False, "error": str(e)}
+        except (CamofoxCliNotFoundError, CamofoxCliError):
+            pass  # Fall through to subprocess fallback
+        except Exception:
+            pass
+
+        # Subprocess fallback (no camofox CLI required)
+        if action == "stop":
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "pkill", "-f", "node.*server.js",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
+                # Also kill any lingering camoufox-bin processes
+                proc2 = await asyncio.create_subprocess_exec(
+                    "pkill", "-f", "camoufox-bin",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await proc2.communicate()
+                return {"ok": True, "action": "stop", "result": "Server stopped via pkill."}
+            except Exception as e:
+                return {"ok": False, "error": f"Stop failed: {e}"}
+
+        elif action == "start":
+            import shutil as _shutil
+            # Find server.js
+            server_js = None
+            try:
+                result = await asyncio.create_subprocess_exec(
+                    "npm", "root", "-g",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await result.communicate()
+                if result.returncode == 0:
+                    candidate = os.path.join(stdout.decode().strip(), "camofox-browser", "dist", "src", "server.js")
+                    if os.path.isfile(candidate):
+                        server_js = candidate
+            except Exception:
+                pass
+
+            if not server_js:
+                return {"ok": False, "error": "server.js not found — cannot start server."}
+
+            port = cfg.get("server_url", "http://localhost:9377").split(":")[-1].rstrip("/")
+            env = os.environ.copy()
+            env["CAMOFOX_PORT"] = str(port)
+            if cfg.get("api_key"):
+                env["CAMOFOX_API_KEY"] = cfg["api_key"]
+            if cfg.get("admin_key"):
+                env["CAMOFOX_ADMIN_KEY"] = cfg["admin_key"]
+            # Software rendering env vars
+            env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+            env["GALLIUM_DRIVER"] = "llvmpipe"
+            env["MOZ_DISABLE_OOP_COMPOSITING"] = "1"
+            env["MOZ_WEBRENDER"] = "0"
+            env["MOZ_DISABLE_RDD_SANDBOX"] = "1"
+
+            try:
+                await asyncio.create_subprocess_exec(
+                    "node", server_js,
+                    env=env,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await asyncio.sleep(4)
+                return {"ok": True, "action": "start", "result": "Server start command sent."}
+            except Exception as e:
+                return {"ok": False, "error": f"Start failed: {e}"}
+
+        return {"ok": False, "error": f"Unknown action: {action!r}"}

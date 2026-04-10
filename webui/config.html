@@ -13,18 +13,26 @@
         setting_up: false,
         generating: false,
         starting: false,
+        stopping: false,
+        serverRunning: false,
+        checkingStatus: false,
         installInfo: null,
         async checkStatus() {
+            this.checkingStatus = true;
             try {
-                const res = await fetchApi('/plugins/camofox_browser/camofox_setup', {
+                const res = await fetchApi('/plugins/camofox_browser/camofox_startup', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({action: 'full_status'})
+                    body: JSON.stringify({action: 'status'})
                 });
-                this.installInfo = await res.json();
+                const data = await res.json();
+                this.installInfo = data;
+                this.serverRunning = data?.components?.server === true;
             } catch(e) {
                 this.installInfo = {ok: false, error: e.message};
+                this.serverRunning = false;
             }
+            this.checkingStatus = false;
         },
         async generateKeys() {
             this.generating = true;
@@ -222,15 +230,22 @@
 
             <div class="field">
                 <div class="field-label">
-                    <div class="field-title">Default Display Mode</div>
-                    <div class="field-description">Initial browser display mode</div>
+                    <div class="field-title">Default Display Mode <em style="font-weight:normal;opacity:0.6;">(for next startup)</em></div>
+                    <div class="field-description">Mode applied when the server starts. Does NOT change the current running session.</div>
                 </div>
-                <div class="field-control">
+                <div class="field-control" style="display:flex;flex-direction:column;gap:6px;">
                     <select x-model="config.default_headless">
                         <option value="true">Headless (fastest, no display)</option>
-                        <option value="virtual">Virtual (VNC viewable)</option>
+                        <option value="virtual">Virtual (VNC viewable) — recommended</option>
                         <option value="false">Headed (system display)</option>
                     </select>
+                    <div style="display:flex;align-items:center;gap:6px;font-size:0.8rem;opacity:0.8;" x-data="{get store() { return window.Alpine?.store?.('camofox') || null; }}">
+                        <span class="material-symbols-outlined" style="font-size:1rem;">circle</span>
+                        <span>Live mode now: </span>
+                        <strong x-text="store?.displayMode ?? 'unknown'"></strong>
+                        <span x-show="store?.displayMode === 'headless'" style="color:#ff9800;">⚠ VNC panel will not show browser content</span>
+                        <span x-show="store?.displayMode === 'virtual'" style="color:#4caf50;">✓ VNC panel active</span>
+                    </div>
                 </div>
             </div>
 
@@ -259,6 +274,17 @@
 
             <div class="field">
                 <div class="field-label">
+                    <div class="field-title">Home Page URL</div>
+                    <div class="field-description">Page loaded automatically after startup so the VNC panel shows content instead of a black screen. Leave empty to disable.</div>
+                </div>
+                <div class="field-control">
+                    <input type="url" x-model="config.default_home_url" placeholder="https://www.google.com" />
+                </div>
+            </div>
+
+
+            <div class="field">
+                <div class="field-label">
                     <div class="field-title">Auto-start Server</div>
                     <div class="field-description">Start CamoFox server automatically when the agent first uses a browser tool</div>
                 </div>
@@ -272,28 +298,89 @@
 
             <div class="field">
                 <div class="field-label">
-                    <div class="field-title">Start / Stop Server</div>
-                    <div class="field-description">Manually control the CamoFox server process</div>
+                    <div class="field-title">Stack Control</div>
+                    <div class="field-description" x-text="setupStatus || (serverRunning ? '🟢 Stack is running' : '🔴 Stack is stopped')"></div>
                 </div>
-                <div class="field-control" style="display:flex;gap:8px;">
-                    <button class="button confirm" :disabled="starting" @click="startServer()">
-                        <span class="material-symbols-outlined" style="font-size:1rem;margin-right:4px;">play_arrow</span> Start
-                    </button>
-                    <button class="button"
+                <div class="field-control" style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="button confirm"
+                        :disabled="starting || serverRunning"
+                        :title="serverRunning ? 'Server is already running' : 'Start full VNC stack'"
                         @click="
-                            fetchApi('/plugins/camofox_browser/camofox_health', {
+                            starting = true;
+                            setupStatus = 'Starting full VNC stack...';
+                            fetchApi('/plugins/camofox_browser/camofox_startup', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({action: 'start'})
+                            }).then(r=>r.json()).then(d=>{
+                                if (d.ok) {
+                                    let parts = Object.entries(d.steps || {}).map(([k,v]) => k + ':' + (v.ok ? '✓' : '✗'));
+                                    setupStatus = (d.message || 'Started') + ' — ' + parts.join(' ');
+                                    serverRunning = true;
+                                } else {
+                                    setupStatus = 'Error: ' + (d.error || JSON.stringify(d));
+                                }
+                                starting = false;
+                                setTimeout(()=>checkStatus(), 1000);
+                            }).catch(e=>{ setupStatus='Error: '+e.message; starting=false; });
+                        ">
+                        <span class="material-symbols-outlined" style="font-size:1rem;margin-right:4px;">play_arrow</span>
+                        <span x-text="starting ? 'Starting...' : 'Start'"></span>
+                    </button>
+
+                    <button class="button"
+                        :disabled="stopping || !serverRunning"
+                        :title="!serverRunning ? 'Server is not running' : 'Stop full VNC stack'"
+                        @click="
+                            stopping = true;
+                            setupStatus = 'Stopping full VNC stack...';
+                            fetchApi('/plugins/camofox_browser/camofox_startup', {
                                 method: 'POST',
                                 headers: {'Content-Type': 'application/json'},
                                 body: JSON.stringify({action: 'stop'})
                             }).then(r=>r.json()).then(d=>{
-                                setupStatus = d.ok ? 'Server stopped.' : d.error;
-                                setTimeout(()=>checkStatus(), 2000);
-                            });
+                                setupStatus = d.ok ? '🔴 Stack stopped.' : ('Error: ' + d.error);
+                                serverRunning = false;
+                                stopping = false;
+                                setTimeout(()=>checkStatus(), 1500);
+                            }).catch(e=>{ setupStatus='Error: '+e.message; stopping=false; });
                         ">
-                        <span class="material-symbols-outlined" style="font-size:1rem;margin-right:4px;">stop</span> Stop
+                        <span class="material-symbols-outlined" style="font-size:1rem;margin-right:4px;">stop</span>
+                        <span x-text="stopping ? 'Stopping...' : 'Stop'"></span>
                     </button>
-                    <button class="button" @click="checkStatus()">
-                        <span class="material-symbols-outlined" style="font-size:1rem;margin-right:4px;">refresh</span> Refresh
+
+                    <button class="button"
+                        :disabled="starting"
+                        title="Stop everything, then start fresh"
+                        @click="
+                            starting = true;
+                            setupStatus = 'Restarting full VNC stack...';
+                            fetchApi('/plugins/camofox_browser/camofox_startup', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({action: 'restart'})
+                            }).then(r=>r.json()).then(d=>{
+                                if (d.ok) {
+                                    let parts = Object.entries(d.steps || {}).map(([k,v]) => k + ':' + (v.ok ? '✓' : '✗'));
+                                    setupStatus = (d.message || 'Restarted') + ' — ' + parts.join(' ');
+                                    serverRunning = true;
+                                } else {
+                                    setupStatus = 'Error: ' + (d.error || JSON.stringify(d));
+                                }
+                                starting = false;
+                                setTimeout(()=>checkStatus(), 1000);
+                            }).catch(e=>{ setupStatus='Error: '+e.message; starting=false; });
+                        ">
+                        <span class="material-symbols-outlined" style="font-size:1rem;margin-right:4px;">restart_alt</span>
+                        <span x-text="starting ? 'Restarting...' : 'Restart'"></span>
+                    </button>
+
+                    <button class="button"
+                        :disabled="checkingStatus"
+                        title="Check current stack status"
+                        @click="checkStatus(); setupStatus = '';">
+                        <span class="material-symbols-outlined" style="font-size:1rem;margin-right:4px;">info</span>
+                        <span x-text="checkingStatus ? 'Checking...' : 'Check Status'"></span>
                     </button>
                 </div>
             </div>

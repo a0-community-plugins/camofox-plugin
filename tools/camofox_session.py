@@ -81,10 +81,18 @@ class CamofoxSession(Tool):
                 display_mode = "headless"
             elif mode == "virtual":
                 display_mode = "virtual"
+                # Node.js server doesn't return vncUrl — construct it from config
+                if not vnc_url:
+                    cfg = get_config()
+                    server_url = cfg.get("server_url", "http://localhost:9377")
+                    port = server_url.rstrip("/").split(":")[-1]
+                    if not port.isdigit():
+                        port = "6080"
+                    vnc_url = f"http://localhost:6080/vnc.html?autoconnect=true&resize=scale"
             else:
                 display_mode = "headed"
             shared_state.set_vnc(user_id, vnc_url, display_mode)
-            if vnc_url:
+            if vnc_url and display_mode in ("virtual", "headed"):
                 return (
                     f"Browser now visible via VNC. All previous tabs are invalidated — "
                     f"create new tabs and snapshot before interacting.\nVNC URL: {vnc_url}"

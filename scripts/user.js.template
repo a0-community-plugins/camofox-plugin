@@ -1,0 +1,23 @@
+// Force software rendering for ALL windows including popups
+user_pref("gfx.webrender.all", false);
+user_pref("gfx.webrender.software", true);
+user_pref("gfx.webrender.enabled", false);
+user_pref("gfx.webrender.force-disabled", true);
+user_pref("layers.acceleration.disabled", true);
+user_pref("layers.acceleration.force-enabled", false);
+user_pref("layers.gpu-process.enabled", false);
+user_pref("layers.offmainthreadcomposition.enabled", false);
+user_pref("gfx.canvas.azure.backends", "cairo");
+user_pref("gfx.content.azure.backends", "cairo");
+user_pref("gfx.direct2d.disabled", true);
+user_pref("media.rdd-process.enabled", false);
+user_pref("security.sandbox.content.level", 0);
+user_pref("dom.ipc.sandbox.content.level", 0);
+// Force popups to open as tabs
+user_pref("browser.link.open_newwindow", 3);
+user_pref("browser.link.open_newwindow.restriction", 0);
+// Disable Fission (site isolation) — fixes black cross-origin iframes and modals
+user_pref("fission.autostart", false);
+user_pref("fission.webContentIsolationStrategy", 0);
+user_pref("gfx.webrender.compositor", false);
+user_pref("gfx.webrender.compositor.force-enabled", false);
