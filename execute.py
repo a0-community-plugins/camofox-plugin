@@ -14,6 +14,12 @@ import secrets
 import shutil
 import time
 
+# Ensure /a0 is on sys.path so plugin helpers can be imported regardless of CWD
+_a0_root = "/a0"
+if _a0_root not in sys.path:
+    sys.path.insert(0, _a0_root)
+
+
 try:
     from usr.plugins.camofox_browser.helpers.config import normalize_headless_mode
     from usr.plugins.camofox_browser.helpers.cli import resolve_camofox_command

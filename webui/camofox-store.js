@@ -143,12 +143,21 @@ export const store = createStore("camofox", {
     },
 
     async showBrowser() {
+        // If panel already has a live URL, just reveal it
         if (this.vncUrl) {
             this.panelVisible = true;
             this.panelMinimized = false;
             return;
         }
         if (!this.connected) return;
+        // If server already reports a visible mode (virtual/headed) and we just
+        // haven't received the URL via poll yet, force-poll instead of toggling.
+        if (this.displayMode === "virtual" || this.displayMode === "headed" || this._rawVncUrl) {
+            this.panelVisible = true;
+            this.panelMinimized = false;
+            await this._pollVnc();
+            return;
+        }
 
         try {
             const res = await fetchApi(`${API_BASE}/camofox_vnc`, {

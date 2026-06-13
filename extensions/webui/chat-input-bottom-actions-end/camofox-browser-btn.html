@@ -61,12 +61,12 @@
                 </div>
             </div>
             <div class="camofox-body" x-show="!$store.camofox.panelMinimized">
-                <template x-if="$store.camofox.vncUrl">
-                    <iframe :src="$store.camofox.vncUrl" class="camofox-vnc-frame"
-                            allow="clipboard-read; clipboard-write"
-                            sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
-                </template>
-                <template x-if="!$store.camofox.vncUrl">
+                <iframe x-show="$store.camofox.vncUrl"
+                        :src="$store.camofox.vncUrl || 'about:blank'"
+                        class="camofox-vnc-frame"
+                        allow="clipboard-read; clipboard-write"
+                        sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+                <template x-if="!$store.camofox.vncUrl && !$store.camofox._rawVncUrl">
                     <div class="camofox-placeholder">
                         <span class="material-symbols-outlined" style="font-size:2rem;opacity:0.3;">desktop_access_disabled</span>
                         <div style="margin-top:8px;">No browser visible — agent is in headless mode</div>

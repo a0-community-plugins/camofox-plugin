@@ -103,7 +103,8 @@ def viewer_state_for_request(state: dict, request=None, server_url: str = "") ->
     result["vnc_url_raw"] = raw_vnc_url
     result["vnc_url"] = normalized_vnc_url
     result["vnc_url_rewritten"] = normalized_vnc_url != raw_vnc_url
-    vnc_ts = result.get("vnc_ts") or result.get("ts")
-    if vnc_ts:
-        result["vnc_session_key"] = str(int(float(vnc_ts) * 1000))
+    # vnc_session_key identifies the upstream session, not write recency.
+    # Hashing the raw URL means the key changes only when the actual session
+    # changes (different upstream token), not on every state write.
+    result["vnc_session_key"] = hashlib.md5(raw_vnc_url.encode()).hexdigest()[:16]
     return result
